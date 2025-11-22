@@ -1,0 +1,52 @@
+use solana_client::rpc_client::RpcClient;
+use solana_sdk::pubkey::Pubkey;
+use pyth_sdk_solana::{load_price_feed_from_account_info, PriceFeed};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum PythError {
+    #[error("RPC error: {0}")]
+    RpcError(#[from] solana_client::client_error::ClientError),
+    #[error("Invalid price feed data")]
+    InvalidPriceFeed,
+    #[error("Price unavailable")]
+    PriceUnavailable,
+}
+
+pub struct PythClient {
+    rpc_client: RpcClient,
+}
+
+impl PythClient {
+    pub fn new(rpc_url: &str) -> Self {
+        Self {
+            rpc_client: RpcClient::new(rpc_url.to_string()),
+        }
+    }
+
+    pub async fn get_price(&self, price_feed_id: &Pubkey) -> Result<f64, PythError> {
+        let account_data = self.rpc_client.get_account_data(price_feed_id)?;
+        let price_feed = load_price_feed_from_account_info(price_feed_id, &account_data)
+            .map_err(|_| PythError::InvalidPriceFeed)?;
+
+        let current_price = price_feed.get_current_price()
+            .ok_or(PythError::PriceUnavailable)?;
+
+        // Convert from fixed-point using the exponent (expo)
+        Ok(current_price.price as f64 * 10_f64.powi(current_price.expo))
+    }
+
+    pub async fn get_price_with_confidence(&self, price_feed_id: &Pubkey) -> Result<(f64, f64), PythError> {
+        let account_data = self.rpc_client.get_account_data(price_feed_id)?;
+        let price_feed = load_price_feed_from_account_info(price_feed_id, &account_data)
+            .map_err(|_| PythError::InvalidPriceFeed)?;
+
+        let current_price = price_feed.get_current_price()
+            .ok_or(PythError::PriceUnavailable)?;
+
+        let price = current_price.price as f64 * 10_f64.powi(current_price.expo);
+        let confidence = current_price.conf as f64 * 10_f64.powi(current_price.expo);
+
+        Ok((price, confidence))
+    }
+}
