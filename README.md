@@ -35,3 +35,10 @@ Redis server
 
 Node.js and npm (for Anchor TypeScript clients and test utilities)
 
+Price Flow:
+Pyth Feed ──┐
+            ├─→ [Price Aggregator] → [Consensus Price] → Redis Cache → API
+Switchboard─┘                                              ↓
+                                                      PostgreSQL
+
+
