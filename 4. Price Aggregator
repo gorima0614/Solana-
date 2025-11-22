@@ -1,0 +1,74 @@
+use std::collections::HashMap;
+
+#[derive(Debug, Clone)]
+pub struct PriceData {
+    pub price: i64,         // scaled price integer
+    pub confidence: u64,    // confidence level, lower is better
+    pub expo: i32,          // price exponent for scaling
+    pub timestamp: i64,     // unix timestamp of price update
+    pub source: PriceSource // source identifier
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PriceSource {
+    Pyth,
+    Switchboard,
+    Internal,
+}
+
+pub struct PriceAggregator {
+    prices: HashMap<PriceSource, PriceData>,
+    max_deviation_bps: u64,  // max allowed deviation in basis points (e.g. 100 = 1%)
+}
+
+impl PriceAggregator {
+    pub fn new(max_deviation_bps: u64) -> Self {
+        Self {
+            prices: HashMap::new(),
+            max_deviation_bps,
+        }
+    }
+
+    pub fn insert_price(&mut self, price_data: PriceData) {
+        self.prices.insert(price_data.source.clone(), price_data);
+    }
+
+    pub fn get_consensus_price(&self) -> Result<i64, &'static str> {
+        if self.prices.is_empty() {
+            return Err("No prices available");
+        }
+
+        // Extract price values scaled to a common exponent (assumes all same expo for simplicity)
+        let mut price_values: Vec<i64> = self.prices.values().map(|p| p.price).collect();
+        price_values.sort_unstable();
+
+        // Calculate median price
+        let median = if price_values.len() % 2 == 0 {
+            let mid = price_values.len() / 2;
+            (price_values[mid - 1] + price_values[mid]) / 2
+        } else {
+            price_values[price_values.len() / 2]
+        };
+
+        // Detect outliers and check deviation
+        for p in self.prices.values() {
+            let diff = if p.price > median { p.price - median } else { median - p.price };
+            let deviation_bps = (diff as u128 * 10_000 / median.abs() as u128) as u64;
+            if deviation_bps > self.max_deviation_bps {
+                return Err("Price deviation from median too high - possible manipulation");
+            }
+        }
+
+        // Optional confidence weighted price calculation
+        // Here we simply return median for robustness
+
+        Ok(median)
+    }
+
+    pub fn fallback_price(&self) -> Option<i64> {
+        // Fallback to highest confidence source or Internal if available
+        let mut prices: Vec<&PriceData> = self.prices.values().collect();
+        prices.sort_by_key(|p| p.confidence);
+        prices.first().map(|p| p.price)
+    }
+}
