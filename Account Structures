@@ -1,0 +1,25 @@
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct PriceData {
+    pub price: i64,             // The current price value, can be positive or negative (fixed-point representation)
+    pub confidence: u64,        // Confidence interval of the price, indicating reliability (usually in basis points)
+    pub expo: i32,              // Exponent to scale the price (e.g., price * 10^expo = actual value)
+    pub timestamp: i64,         // Unix timestamp indicating when this price was last updated
+    pub source: PriceSource,    // Enum indicating which oracle source this price came from
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq)]
+pub enum PriceSource {
+    Pyth,           // Price sourced from Pyth oracle
+    Switchboard,    // Price sourced from Switchboard oracle
+    Internal,       // Price internally derived or computed
+}
+
+#[account]
+pub struct OracleConfig {
+    pub symbol: String,              // Symbol for the asset, e.g., "BTC/USD"
+    pub pyth_feed: Pubkey,           // Public key of the Pyth price feed account for the symbol
+    pub switchboard_aggregator: Pubkey, // Public key of the Switchboard aggregator account
+    pub max_staleness: i64,          // Maximum allowed age of price data in seconds; prices older than this considered stale
+    pub max_confidence: u64,         // Maximum allowed confidence interval for accepted prices (basis points)
+    pub max_deviation: u64,          // Maximum price deviation allowed between sources to consider consensus valid (basis points)
+}
