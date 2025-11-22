@@ -1,0 +1,71 @@
+use redis::AsyncCommands;
+use serde::{Serialize, Deserialize};
+use tokio::sync::broadcast;
+use chrono::Utc;
+use std::time::Instant;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PriceData {
+    pub symbol: String,
+    pub price: i64,
+    pub confidence: u64,
+    pub expo: i32,
+    pub timestamp: i64,
+    pub source: String,
+}
+
+pub struct PriceCachePublisher {
+    redis_client: redis::Client,
+    pub broadcaster: broadcast::Sender<PriceData>,
+}
+
+impl PriceCachePublisher {
+    pub fn new(redis_url: &str) -> anyhow::Result<Self> {
+        let client = redis::Client::open(redis_url)?;
+        let (tx, _) = broadcast::channel(100);
+        Ok(Self {
+            redis_client: client,
+            broadcaster: tx,
+        })
+    }
+
+    pub async fn store_price(&self, price_data: &PriceData) -> anyhow::Result<()> {
+        let mut conn = self.redis_client.get_async_connection().await?;
+
+        // Store latest price keyed by symbol
+        let key = format!("price:latest:{}", price_data.symbol);
+        let serialized = serde_json::to_string(price_data)?;
+        conn.set(key, serialized).await?;
+
+        // Append to sorted set for price history with timestamp as score
+        let history_key = format!("price:history:{}", price_data.symbol);
+        conn.zadd(history_key, &serialized, price_data.timestamp).await?;
+
+        Ok(())
+    }
+
+    pub async fn publish_price(&self, price_data: PriceData) -> anyhow::Result<()> {
+        // Broadcast price update to all subscribers asynchronously
+        let _ = self.broadcaster.send(price_data);
+        Ok(())
+    }
+
+    pub async fn get_latest_price(&self, symbol: &str) -> anyhow::Result<Option<PriceData>> {
+        let mut conn = self.redis_client.get_async_connection().await?;
+        let key = format!("price:latest:{}", symbol);
+        let data: Option<String> = conn.get(key).await?;
+
+        if let Some(json) = data {
+            let price_data: PriceData = serde_json::from_str(&json)?;
+            Ok(Some(price_data))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub async fn track_latency(&self, start_time: Instant) {
+        let elapsed = start_time.elapsed();
+        println!("Price update latency: {:?}", elapsed);
+        // Extend: record latency metric in monitoring system or DB
+    }
+}
