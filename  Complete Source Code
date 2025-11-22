@@ -1,0 +1,29 @@
+perpetual-oracle-dex/
+├── anchor-program/
+│   ├── src/
+│   │   ├── lib.rs
+│   │   └── ... (modules/instructions)
+│   ├── Anchor.toml
+├── backend-oracle-service/
+│   ├── src/
+│   │   ├── main.rs
+│   │   ├── oracle_manager.rs
+│   │   ├── pyth_client.rs
+│   │   ├── switchboard_client.rs
+│   │   ├── price_aggregator.rs
+│   │   ├── price_cache.rs
+│   │   ├── health_monitor.rs
+│   │   ├── api.rs
+│   │   └── ...
+│   ├── tests/
+│   │   └── integration.rs
+│   └── Cargo.toml
+├── migrations/
+│   └── 001-init.sql
+├── config/
+│   └── .env.example
+├── README.md
+└── scripts/
+    ├── deploy_anchor.sh
+    ├── run_backend.sh
+    └── migrate_db.sh
