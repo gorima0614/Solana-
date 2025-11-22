@@ -1,0 +1,50 @@
+use solana_client::rpc_client::RpcClient;
+use solana_sdk::pubkey::Pubkey;
+use switchboard_solana::AggregatorAccountData;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum SwitchboardError {
+    #[error("RPC error: {0}")]
+    RpcError(#[from] solana_client::client_error::ClientError),
+    #[error("Aggregator account data invalid")]
+    InvalidAggregator,
+    #[error("No valid oracle data available")]
+    OracleDataUnavailable,
+}
+
+pub struct SwitchboardClient {
+    rpc_client: RpcClient,
+}
+
+impl SwitchboardClient {
+    pub fn new(rpc_url: &str) -> Self {
+        Self {
+            rpc_client: RpcClient::new(rpc_url.to_string()),
+        }
+    }
+
+    pub fn get_aggregator_data(&self, aggregator_pubkey: &Pubkey) -> Result<AggregatorAccountData, SwitchboardError> {
+        let account_data = self.rpc_client.get_account_data(aggregator_pubkey)?;
+        let aggregator = AggregatorAccountData::new(
+            &account_data,
+            *aggregator_pubkey,
+        ).map_err(|_| SwitchboardError::InvalidAggregator)?;
+        Ok(aggregator)
+    }
+
+    pub fn get_latest_price(&self, aggregator_pubkey: &Pubkey) -> Result<(i64, u64, u64), SwitchboardError> {
+        let aggregator = self.get_aggregator_data(aggregator_pubkey)?;
+        if aggregator.oracle_data.is_empty() {
+            return Err(SwitchboardError::OracleDataUnavailable);
+        }
+
+        let latest_result = aggregator.current_result;
+        let latest_timestamp = aggregator.latest_update;
+        let confidence = aggregator.confidence;
+
+        Ok((latest_result, confidence, latest_timestamp))
+    }
+
+    // Extend with multi-round prices, health checks, and consensus extraction as needed
+}
